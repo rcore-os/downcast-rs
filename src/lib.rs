@@ -1,4 +1,5 @@
 #![deny(unsafe_code)]
+#![no_std]
 //! Rust enums are great for types where all variations are known beforehand. But a
 //! container of user-defined types requires an open-ended type like a **trait
 //! object**. Some applications may want to cast these trait objects back to the
@@ -53,8 +54,8 @@
 //! # Example without generics
 //!
 //! ```
-//! # use std::rc::Rc;
-//! # use std::sync::Arc;
+//! # use alloc::rc::Rc;
+//! # use alloc::sync::Arc;
 //! // Import macro via `macro_use` pre-1.30.
 //! #[macro_use]
 //! extern crate downcast_rs;
@@ -137,7 +138,10 @@
 //! }
 //! ```
 
-use std::any::Any;
+extern crate alloc;
+
+use alloc::boxed::Box;
+use core::any::Any;
 
 /// Supports conversion to `Any`. Traits to be extended by `impl_downcast!` must extend `Downcast`.
 pub trait Downcast: Any {
@@ -146,7 +150,7 @@ pub trait Downcast: Any {
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
     /// Convert `Rc<Trait>` (where `Trait: Downcast`) to `Rc<Any>`. `Rc<Any>` can then be
     /// further `downcast` into `Rc<ConcreteType>` where `ConcreteType` implements `Trait`.
-    fn into_any_rc(self: ::std::rc::Rc<Self>) -> ::std::rc::Rc<dyn Any>;
+    fn into_any_rc(self: ::alloc::rc::Rc<Self>) -> ::alloc::rc::Rc<dyn Any>;
     /// Convert `&Trait` (where `Trait: Downcast`) to `&Any`. This is needed since Rust cannot
     /// generate `&Any`'s vtable from `&Trait`'s.
     fn as_any(&self) -> &dyn Any;
@@ -156,25 +160,35 @@ pub trait Downcast: Any {
 }
 
 impl<T: Any> Downcast for T {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
-    fn into_any_rc(self: ::std::rc::Rc<Self>) -> ::std::rc::Rc<dyn Any> { self }
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+    fn into_any_rc(self: ::alloc::rc::Rc<Self>) -> ::alloc::rc::Rc<dyn Any> {
+        self
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 /// Extends `Downcast` to support `Sync` traits that thus support `Arc` downcasting as well.
 pub trait DowncastSync: Downcast + Send + Sync {
     /// Convert `Arc<Trait>` (where `Trait: Downcast`) to `Arc<Any>`. `Arc<Any>` can then be
     /// further `downcast` into `Arc<ConcreteType>` where `ConcreteType` implements `Trait`.
-    fn into_any_arc(self: ::std::sync::Arc<Self>) -> ::std::sync::Arc<dyn Any + Send + Sync>;
+    fn into_any_arc(self: ::alloc::sync::Arc<Self>) -> ::alloc::sync::Arc<dyn Any + Send + Sync>;
 }
 
 impl<T: Any + Send + Sync> DowncastSync for T {
-    fn into_any_arc(self: ::std::sync::Arc<Self>) -> ::std::sync::Arc<dyn Any + Send + Sync> { self }
+    fn into_any_arc(self: ::alloc::sync::Arc<Self>) -> ::alloc::sync::Arc<dyn Any + Send + Sync> {
+        self
+    }
 }
 
 /// Adds downcasting support to traits that extend `downcast::Downcast` by defining forwarding
-/// methods to the corresponding implementations on `std::any::Any` in the standard library.
+/// methods to the corresponding implementations on `core::any::Any` in the standard library.
 ///
 /// See https://users.rust-lang.org/t/how-to-create-a-macro-to-impl-a-provided-type-parametrized-trait/5289
 /// for why this is implemented this way to support templatized traits.
@@ -223,8 +237,8 @@ macro_rules! impl_downcast {
         /// `__T`. Returns the original boxed trait if it isn't.
         #[inline]
         pub fn downcast<__T: $trait_<$($types)*>>(
-            self: ::std::boxed::Box<Self>
-        ) -> ::std::result::Result<::std::boxed::Box<__T>, ::std::boxed::Box<Self>> {
+            self: ::alloc::boxed::Box<Self>
+        ) -> ::core::result::Result<::alloc::boxed::Box<__T>, ::alloc::boxed::Box<Self>> {
             if self.is::<__T>() {
                 Ok($crate::Downcast::into_any(self).downcast::<__T>().unwrap())
             } else {
@@ -235,8 +249,8 @@ macro_rules! impl_downcast {
         /// type `__T`. Returns the original `Rc`-ed trait if it isn't.
         #[inline]
         pub fn downcast_rc<__T: $trait_<$($types)*>>(
-            self: ::std::rc::Rc<Self>
-        ) -> ::std::result::Result<::std::rc::Rc<__T>, ::std::rc::Rc<Self>> {
+            self: ::alloc::rc::Rc<Self>
+        ) -> ::core::result::Result<::alloc::rc::Rc<__T>, ::alloc::rc::Rc<Self>> {
             if self.is::<__T>() {
                 Ok($crate::Downcast::into_any_rc(self).downcast::<__T>().unwrap())
             } else {
@@ -246,13 +260,13 @@ macro_rules! impl_downcast {
         /// Returns a reference to the object within the trait object if it is of type `__T`, or
         /// `None` if it isn't.
         #[inline]
-        pub fn downcast_ref<__T: $trait_<$($types)*>>(&self) -> ::std::option::Option<&__T> {
+        pub fn downcast_ref<__T: $trait_<$($types)*>>(&self) -> ::core::option::Option<&__T> {
             $crate::Downcast::as_any(self).downcast_ref::<__T>()
         }
         /// Returns a mutable reference to the object within the trait object if it is of type
         /// `__T`, or `None` if it isn't.
         #[inline]
-        pub fn downcast_mut<__T: $trait_<$($types)*>>(&mut self) -> ::std::option::Option<&mut __T> {
+        pub fn downcast_mut<__T: $trait_<$($types)*>>(&mut self) -> ::core::option::Option<&mut __T> {
             $crate::Downcast::as_any_mut(self).downcast_mut::<__T>()
         }
     };
@@ -262,9 +276,9 @@ macro_rules! impl_downcast {
         /// type `__T`. Returns the original `Arc`-ed trait if it isn't.
         #[inline]
         pub fn downcast_arc<__T: $trait_<$($types)*>>(
-            self: ::std::sync::Arc<Self>,
-        ) -> ::std::result::Result<::std::sync::Arc<__T>, ::std::sync::Arc<Self>>
-            where __T: ::std::any::Any + ::std::marker::Send + ::std::marker::Sync
+            self: ::alloc::sync::Arc<Self>,
+        ) -> ::core::result::Result<::alloc::sync::Arc<__T>, ::alloc::sync::Arc<Self>>
+            where __T: ::core::any::Any + ::core::marker::Send + ::core::marker::Sync
         {
             if self.is::<__T>() {
                 Ok($crate::DowncastSync::into_any_arc(self).downcast::<__T>().unwrap())
@@ -282,7 +296,7 @@ macro_rules! impl_downcast {
         impl_downcast! {
             @as_item
                 $($before)*
-                where $( $types: ::std::any::Any + 'static ),*
+                where $( $types: ::core::any::Any + 'static ),*
                 $($after)*
         }
     };
@@ -291,7 +305,7 @@ macro_rules! impl_downcast {
             @as_item
                 $($before)*
                 where
-                    $( $types: ::std::any::Any + 'static, )*
+                    $( $types: ::core::any::Any + 'static, )*
                     $($preds)*
                 $($after)*
         }
@@ -389,7 +403,6 @@ macro_rules! impl_downcast {
     };
 }
 
-
 #[cfg(test)]
 mod test {
     macro_rules! test_mod {
@@ -434,7 +447,7 @@ mod test {
                     { $($sync_def)+ },
                     [{
                         // Fail to convert Arc<Base> into Arc<Bar>.
-                        let arc: ::std::sync::Arc<$base_type> = ::std::sync::Arc::new(Foo(42));
+                        let arc: ::alloc::sync::Arc<$base_type> = ::alloc::sync::Arc::new(Foo(42));
                         let res = arc.downcast_arc::<Bar>();
                         assert!(res.is_err());
                         let arc = res.unwrap_err();
@@ -482,19 +495,19 @@ mod test {
                 impl $base_trait for Bar { $($base_impl)* }
 
                 // Functions that can work on references to Base trait objects.
-                fn get_val(base: &::std::boxed::Box<$base_type>) -> u32 {
+                fn get_val(base: &::alloc::boxed::Box<$base_type>) -> u32 {
                     match base.downcast_ref::<Foo>() {
                         Some(val) => val.0,
                         None => 0
                     }
                 }
-                fn set_val(base: &mut ::std::boxed::Box<$base_type>, val: u32) {
+                fn set_val(base: &mut ::alloc::boxed::Box<$base_type>, val: u32) {
                     if let Some(foo) = base.downcast_mut::<Foo>() {
                         foo.0 = val;
                     }
                 }
 
-                let mut base: ::std::boxed::Box<$base_type> = ::std::boxed::Box::new(Foo(42));
+                let mut base: ::alloc::boxed::Box<$base_type> = ::alloc::boxed::Box::new(Foo(42));
                 assert_eq!(get_val(&base), 42);
 
                 // Try sequential downcasts.
@@ -518,7 +531,7 @@ mod test {
                     6*9, base.downcast::<Foo>().map_err(|_| "Shouldn't happen.").unwrap().0);
 
                 // Fail to convert Rc<Base> into Rc<Bar>.
-                let rc: ::std::rc::Rc<$base_type> = ::std::rc::Rc::new(Foo(42));
+                let rc: ::alloc::rc::Rc<$base_type> = ::alloc::rc::Rc::new(Foo(42));
                 let res = rc.downcast_rc::<Bar>();
                 assert!(res.is_err());
                 let rc = res.unwrap_err();
